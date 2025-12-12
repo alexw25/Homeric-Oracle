@@ -28,36 +28,35 @@
 <div id="meta2"></div>
 
 <script>
-/* === Sample Data ===
-Replace these with your actual hymns.json content */
+/* === Load your hymns.json here ===
+   Replace the sample data below with your full hymns.json content. */
 const HYMNS = {
   "1": ["Sing, O goddess, the wrath of Achilles...", "He left the Achaeans in grief..."],
   "2": ["Of Demeter, who taught the fruits of the earth...", "The harvests bless the mortals..."],
   "3": ["To Apollo, the far-shooting god...", "He guides the bow and lyre..."]
-  // add all hymns up to "33"
+  // ... up to "33"
 };
 
 /* === Helper functions === */
 
-// Simple word-to-number (ASCII sum)
+// ASCII sum of word
 function wordValue(word) {
   return word.split('').reduce((sum,c)=>sum + c.charCodeAt(0), 0);
 }
 
-// Validate sentence (minimum length & not just symbols)
+// Check if sentence is meaningful
 function isValidSentence(s) {
   if (!s) return false;
   const cleaned = s.replace(/[\s\W]+/g, '');
-  return cleaned.length >= 10;
+  return cleaned.length >= 15;
 }
 
-// Generate deterministic index from word and max
+// Deterministic index from word
 function deterministicIndex(word, max) {
-  const val = wordValue(word);
-  return val % max;  // deterministic wrap-around
+  return wordValue(word) % max;
 }
 
-// Generate n random words from dictionary
+// Random words (sample dictionary)
 function randomWords(n) {
   const dictionary = ["and","or","the","fact","hero","goddess","sun","moon","sky","earth","fire","water","wind"];
   const words = [];
@@ -80,7 +79,10 @@ function showStage1Words() {
     const btn = document.createElement('button');
     btn.textContent = word;
     btn.onclick = ()=>{
-      chosenHymn = ((wordValue(word) % Object.keys(HYMNS).length) + 1).toString();
+      // Choose hymn deterministically
+      const hymnKeys = Object.keys(HYMNS);
+      const idx = wordValue(word) % hymnKeys.length;
+      chosenHymn = hymnKeys[idx];
       document.getElementById('meta1').textContent =
         `You chose "${word}" → Hymn ${chosenHymn}`;
       document.getElementById('stage1').style.display = 'none';
@@ -98,8 +100,10 @@ function showStage2Words() {
   const container = document.getElementById('wordButtons2');
   container.innerHTML = '';
 
-  const hymnSentences = (HYMNS[chosenHymn] || []).filter(isValidSentence);
-  if(hymnSentences.length === 0){
+  const hymnSentencesRaw = HYMNS[chosenHymn] || [];
+  const validSentences = hymnSentencesRaw.filter(isValidSentence);
+
+  if(validSentences.length === 0){
     document.getElementById('result').textContent =
       `Hymn ${chosenHymn} has no usable sentences.`;
     return;
@@ -109,25 +113,25 @@ function showStage2Words() {
     const btn = document.createElement('button');
     btn.textContent = word;
     btn.onclick = ()=>{
-      let idx = deterministicIndex(word, hymnSentences.length);
-      let sentence = hymnSentences[idx];
+      let idx = deterministicIndex(word, validSentences.length);
+      let sentence = validSentences[idx];
 
-      // fallback search forward for a valid sentence if somehow invalid
+      // fallback: loop forward to find valid sentence
       let attempts = 0;
-      while(!isValidSentence(sentence) && attempts < hymnSentences.length){
-        idx = (idx + 1) % hymnSentences.length;
-        sentence = hymnSentences[idx];
+      while(!isValidSentence(sentence) && attempts < validSentences.length){
+        idx = (idx + 1) % validSentences.length;
+        sentence = validSentences[idx];
         attempts++;
       }
 
       if(!isValidSentence(sentence)){
         document.getElementById('result').textContent =
-          `No valid sentence found for Hymn ${chosenHymn}.`;
+          `No valid sentence could be found for Hymn ${chosenHymn}.`;
         return;
       }
 
       document.getElementById('meta2').textContent =
-        `You chose "${word}" → value ${wordValue(word)} → sentence ${idx+1}/${hymnSentences.length}`;
+        `You chose "${word}" → value ${wordValue(word)} → sentence ${idx+1}/${validSentences.length}`;
 
       document.getElementById('result').textContent =
         `Hymn ${chosenHymn}, Sentence ${idx+1}:\n\n${sentence}`;
