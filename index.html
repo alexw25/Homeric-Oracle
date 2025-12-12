@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Homeric Hymn Oracle (GitHub Pages)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width:900px; margin:2rem auto; padding:1rem; }
+    h1 { margin-top:0; }
+    .words { display:flex; gap:0.8rem; flex-wrap:wrap; margin-top:1rem; }
+    .word-btn { padding:0.6rem 1rem; border-radius:8px; border:1px solid #888; cursor:pointer; background:#fff; }
+    .word-btn:hover { background:#f0f0f0; }
+    .selected { outline:3px solid #4a6; background:#eaffea; }
+    .controls { margin-top:1rem; display:flex; gap:1rem; align-items:center; }
+    .box { margin-top:1rem; padding:1rem; border-radius:8px; background:#fafafa; border:1px solid #eee; }
+    pre.result { background:#111; color:#fff; padding:1rem; border-radius:6px; white-space:pre-wrap; }
+    .meta { color:#555; margin-top:0.4rem; }
+    footer { margin-top:2rem; color:#666; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Homeric Hymn Oracle</h1>
+  <p>Step 1: Choose a word to pick a Homeric Hymn. (A=1, B=2, ... Z=26)</p>
+
+  <div id="step1" class="box">
+    <div id="words1" class="words"></div>
+    <div class="controls">
+      <button id="refresh1">New words</button>
+      <div id="meta1" class="meta"></div>
+    </div>
+    <div id="hymnInfo" class="meta"></div>
+  </div>
+
+  <div id="step2" class="box" style="display:none;">
+    <h2>Step 2: Choose a word to pick a line from Hymn <span id="chosenHymnNum"></span></h2>
+    <div id="words2" class="words"></div>
+    <div class="controls">
+      <button id="refresh2">New words</button>
+      <div id="meta2" class="meta"></div>
+    </div>
+    <h3>Oracle result</h3>
+    <pre id="result" class="result">(no result yet)</pre>
+  </div>
+
+  <footer>
+    Sources: Homeric Hymns (public-domain translations: Evelyn-White 1914 / Gutenberg / Sacred-Texts). This site reads local files <code>words.txt</code> and <code>hymns.json</code> (or <code>hymns_sample.json</code> for testing).
+  </footer>
+
+<script>
+// ---------- CONFIG ----------
+const WORDS_FILE = 'words.txt';            // include in repo
+const HYMNS_FILE = 'hymns.json';           // final file produced by script
+const HYMNS_SAMPLE_FILE = 'hymns_sample.json'; // sample for initial testing
+const USE_SAMPLE_IF_NO_HYMN = true;        // if hymns.json missing, fallback to sample
+
+// ---------- UTILS ----------
+function alphavalue(word) {
+  // A=1 .. Z=26, ignores non-letters
+  let sum = 0;
+  for (let ch of word.toLowerCase()) {
+    const code = ch.charCodeAt(0);
+    if (code >= 97 && code <= 122) sum += (code - 96);
+  }
+  return sum;
+}
+
+function pickN(arr, n=3) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  const pool = arr.slice();
+  for (let i = 0; i < Math.min(n, pool.length); ++i) {
+    const j = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(j,1)[0]);
+  }
+  return out;
+}
+
+async function fetchText(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('fetch failed: ' + url);
+  return await res.text();
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('fetch failed: ' + url);
+  return await res.json();
+}
+
+// ---------- APP STATE ----------
+let WORDS = [];
+let HYMNS = {}; // keys are '1'..'33', each value is array of sentences
+let chosenHymn = null;
+
+// ---------- UI HELPERS ----------
+const words1 = document.getElementById('words1');
+const words2 = document.getElementById('words2');
+const refresh1 = document.getElementById('refresh1');
+const refresh2 = document.getElementById('refresh2');
+const meta1 = document.getElementById('meta1');
+const meta2 = document.getElementById('meta2');
+const hymnInfo = document.getElementById('hymnInfo');
+const chosenHymnNum = document.getElementById('chosenHymnNum');
+const step2 = document.getElementById('step2');
+const result = document.getElementById('result');
+
+function renderWordButtons(container, words, onClick) {
+  container.innerHTML = '';
+  words.forEach(w => {
+    const btn = document.createElement('button');
+    btn.className = 'word-btn';
+    btn.textContent = w;
+    btn.addEventListener('click', () => onClick(w, btn));
+    container.appendChild(btn);
+  });
+}
+
+// ---------- Stage1: pick hymn ----------
+function showStage1Words() {
+  const three = pickN(WORDS, 3);
+  renderWordButtons(words1, three, (word, btn) => {
+    // mark selection
+    document.querySelectorAll('#words1 .word-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    const val = alphavalue(word);
+    // map to 1..33
+    const hymnNumber = ((val - 1) % 33) + 1;
+    chosenHymn = hymnNumber.toString();
+    meta1.textContent = `Selected "${word}" → value ${val} → Hymn ${hymnNumber}`;
+    hymnInfo.innerHTML = `Hymn chosen: <b>${hymnNumber}</b>. (${HYMNS[chosenHymn] ? HYMNS[chosenHymn].length + ' sentences loaded' : 'no data loaded'})`;
+
+    // show stage2
+    chosenHymnNum.textContent = hymnNumber;
+    step2.style.display = 'block';
+    showStage2Words();
+    result.textContent = '(no result yet)';
+  });
+}
+
+// ---------- Stage2: pick line ----------
+function showStage2Words() {
+  meta2.textContent = '';
+  const three = pickN(WORDS, 3);
+  renderWordButtons(words2, three, (word, btn) => {
+    document.querySelectorAll('#words2 .word-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    const val = alphavalue(word);
+    // get hymn sentences
+    const hymnSentences = HYMNS[chosenHymn];
+    if (!hymnSentences || hymnSentences.length === 0) {
+      result.textContent = `No hymn data found for Hymn ${chosenHymn}.`;
+      return;
+    }
+    const idx = ((val - 1) % hymnSentences.length);
+    const sentence = hymnSentences[idx];
+
+    meta2.textContent = `You chose "${word}" → value ${val} → sentence index ${idx+1}/${hymnSentences.length}`;
+    result.textContent = `Hymn ${chosenHymn}, Sentence ${idx+1}:\n\n${sentence}`;
+  });
+}
+
+// ---------- Bootstrapping ----------
+async function init() {
+  try {
+    // load words
+    const wordsText = await fetchText(WORDS_FILE);
+    WORDS = wordsText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  } catch (err) {
+    console.error('Failed to load words.txt:', err);
+    alert('Failed to load words.txt. Make sure the file exists in the repo root and is in the same folder as index.html.');
+    return;
+  }
+
+  try {
+    // try to load hymns.json; fallback to sample if missing and allowed
+    try {
+      HYMNS = await fetchJSON(HYMNS_FILE);
+    } catch (err) {
+      if (USE_SAMPLE_IF_NO_HYMN) {
+        console.warn('hymns.json not found; loading sample.', err);
+        HYMNS = await fetchJSON(HYMNS_SAMPLE_FILE);
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load hymns JSON:', err);
+    alert('Failed to load hymns JSON. Put hymns.json (or hymns_sample.json) in the repo root.');
+    return;
+  }
+
+  // render first set
+  showStage1Words();
+}
+
+refresh1.addEventListener('click', () => {
+  showStage1Words();
+});
+refresh2.addEventListener('click', () => {
+  showStage2Words();
+});
+
+init();
+</script>
+</body>
+</html>
